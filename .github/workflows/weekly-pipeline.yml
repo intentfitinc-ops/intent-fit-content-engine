@@ -1,0 +1,40 @@
+name: Weekly Pipeline
+
+on:
+  schedule:
+    # 9am UTC Monday = 2am MST Monday
+    - cron: '0 9 * * MON'
+  workflow_dispatch: {}
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly pipeline
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_OBSERVATIONS_DB_ID: ${{ secrets.NOTION_OBSERVATIONS_DB_ID }}
+          NOTION_BREAKDOWNS_DB_ID: ${{ secrets.NOTION_BREAKDOWNS_DB_ID }}
+          NOTION_WEEKLY_HUB_DB_ID: ${{ secrets.NOTION_WEEKLY_HUB_DB_ID }}
+        run: python scripts/run_weekly.py | tee run.log
+
+      - name: Upload run log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-log
+          path: run.log
+          retention-days: 7
