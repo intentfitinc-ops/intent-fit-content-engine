@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from src import config
 
@@ -68,12 +69,33 @@ def _handle_to_channel(youtube, handle: str) -> Optional[dict]:
         .execute()
     )
     items = resp.get("items", [])
-    if not items:
-        logger.warning("Could not resolve channel for handle %s", handle)
-        return None
-    channel = items[0]
-    uploads_playlist_id = channel["contentDetails"]["relatedPlaylists"]["uploads"]
-    return {"channel_id": channel["id"], "uploads_playlist_id": uploads_playlist_id}
+    if items:
+        channel = items[0]
+        uploads_playlist_id = channel["contentDetails"]["relatedPlaylists"]["uploads"]
+        return {"channel_id": channel["id"], "uploads_playlist_id": uploads_playlist_id}
+
+    # Fallback: forHandle didn't resolve (some handles, e.g. with trailing
+    # punctuation, aren't found this way) — search by handle text instead.
+    search_resp = (
+        youtube.search()
+        .list(part="snippet", q=handle, type="channel", maxResults=1)
+        .execute()
+    )
+    search_items = search_resp.get("items", [])
+    if search_items:
+        channel_id = search_items[0]["id"]["channelId"]
+        details_resp = (
+            youtube.channels().list(part="contentDetails", id=channel_id).execute()
+        )
+        details_items = details_resp.get("items", [])
+        if details_items:
+            uploads_playlist_id = details_items[0]["contentDetails"][
+                "relatedPlaylists"
+            ]["uploads"]
+            return {"channel_id": channel_id, "uploads_playlist_id": uploads_playlist_id}
+
+    logger.warning("Could not resolve channel for handle %s", handle)
+    return None
 
 
 def _video_ids_from_playlist(youtube, playlist_id: str, max_results: int) -> list[str]:
@@ -138,9 +160,15 @@ def fetch_account_observations(youtube=None) -> list[Observation]:
             channel = _handle_to_channel(youtube, handle)
             if not channel:
                 continue
-            video_ids = _video_ids_from_playlist(
-                youtube, channel["uploads_playlist_id"], UPLOADS_PER_ACCOUNT
-            )
+            try:
+                video_ids = _video_ids_from_playlist(
+                    youtube, channel["uploads_playlist_id"], UPLOADS_PER_ACCOUNT
+                )
+            except HttpError as e:
+                logger.warning(
+                    "Could not fetch uploads playlist for handle %s: %s", handle, e
+                )
+                continue
             details = _videos_details(youtube, video_ids)
             for video_id in video_ids:
                 video = details.get(video_id)
