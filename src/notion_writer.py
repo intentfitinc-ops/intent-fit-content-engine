@@ -105,6 +105,20 @@ def _observation_exists(client: Client, source_id: str) -> bool:
     return len(resp.get("results", [])) > 0
 
 
+# Tier is a select property in the live Observations DB, with options fixed
+# to these exact names — verified against the DB schema (not the "Tier 1" /
+# "Tier 2" / "Hashtag" names originally assumed).
+_TIER_SELECT_NAMES = {
+    1: "tier_1_direct",
+    2: "tier_2_future_product",
+}
+_HASHTAG_TIER_SELECT_NAME = "keyword_search"
+
+
+def _tier_select_name(tier: int | None) -> str:
+    return _TIER_SELECT_NAMES.get(tier, _HASHTAG_TIER_SELECT_NAME)
+
+
 def _observation_properties(obs: Observation) -> dict:
     properties = {
         "Source": {"select": {"name": obs.source}},
@@ -118,25 +132,21 @@ def _observation_properties(obs: Observation) -> dict:
         "Outlier Score": {"number": round(obs.outlier_score, 4)},
         "Proven Winner": {"checkbox": obs.proven_winner},
         "Source ID": {"rich_text": _rich_text(obs.source_id)},
+        "Tier": {"select": {"name": _tier_select_name(obs.tier)}},
     }
-    if obs.tier is not None:
-        properties["Tier"] = {"number": obs.tier}
+    # The DB's select options for these fields are stored as the raw
+    # snake_case taxonomy values, not display-cased text — display_case()
+    # is only for human-readable text in the Breakdowns page body.
     if obs.format:
-        properties["Format"] = {"select": {"name": display_case(obs.format)}}
+        properties["Format"] = {"select": {"name": obs.format}}
     if obs.hook_type:
-        properties["Hook Type"] = {"select": {"name": display_case(obs.hook_type)}}
+        properties["Hook Type"] = {"select": {"name": obs.hook_type}}
     if obs.emotional_driver:
-        properties["Emotional Driver"] = {
-            "select": {"name": display_case(obs.emotional_driver)}
-        }
+        properties["Emotional Driver"] = {"select": {"name": obs.emotional_driver}}
     if obs.segment_target:
-        properties["Segment Target"] = {
-            "select": {"name": display_case(obs.segment_target)}
-        }
+        properties["Segment Target"] = {"select": {"name": obs.segment_target}}
     if obs.funnel_stage:
-        properties["Funnel Stage"] = {
-            "select": {"name": display_case(obs.funnel_stage)}
-        }
+        properties["Funnel Stage"] = {"select": {"name": obs.funnel_stage}}
     return properties
 
 
