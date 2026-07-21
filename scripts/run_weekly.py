@@ -69,7 +69,15 @@ def main() -> int:
     breakdowns_written = write_breakdowns(notion, top_n, week_of.isoformat())
     logger.info("Wrote %d new breakdown pages", breakdowns_written)
 
-    hub_created = write_weekly_hub(notion, week_of)
+    try:
+        hub_created = write_weekly_hub(notion, week_of)
+    except Exception:
+        logger.exception(
+            "Weekly Hub page creation failed for Week Of %s (Weekly Hub DB %s)",
+            week_of.isoformat(),
+            config.NOTION_WEEKLY_HUB_DB_ID,
+        )
+        raise
     logger.info(
         "Weekly Hub page %s", "created" if hub_created else "already existed — skipped"
     )
